@@ -5,14 +5,19 @@ import hudson.Extension;
 import hudson.Util;
 import hudson.model.FreeStyleBuild;
 import hudson.model.FreeStyleProject;
+import hudson.model.Item;
+import hudson.model.ItemGroup;
 import hudson.model.Job;
 import hudson.model.Run;
+import io.jenkins.blueocean.rest.factory.organization.OrganizationFactory;
+import io.jenkins.blueocean.rest.model.BlueOrganization;
 import jenkins.branch.MultiBranchProject;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 
+import java.util.Iterator;
 import java.util.Set;
 
 
@@ -82,12 +87,16 @@ public class BlueOceanDisplayURLImpl extends DisplayURLProvider {
     public String getJobURL(Job<?, ?> job) {
         if (isSupported(job)) {
             String jobPath;
+            String organization;
             if(job.getParent() instanceof MultiBranchProject) {
-                jobPath = Util.rawEncode(job.getParent().getFullName());
+                ItemGroup parent = job.getParent();
+                jobPath = Util.rawEncode(parent.getFullName());
+                organization = getOrganization(parent);
             } else {
                 jobPath = Util.rawEncode(job.getFullName());
+                organization = getOrganization(job);
             }
-            return getRoot() + "organizations/jenkins/" + jobPath + "/";
+            return getRoot() + "organizations/" + organization + "/" + jobPath + "/";
         } else {
             return DisplayURLProvider.getDefault().getJobURL(job);
         }
@@ -112,7 +121,46 @@ public class BlueOceanDisplayURLImpl extends DisplayURLProvider {
 
     private String getJobURL(MultiBranchProject<?, ?> project) {
         String jobPath = Util.rawEncode(project.getFullName());
+        return getRoot() + "organizations/" + getOrganization((ItemGroup) project) + "/" + jobPath + "/";
+    }
 
-        return getRoot() + "organizations/jenkins/" + jobPath + "/";
+    private final String DEFAULT_ORG = "jenkins";
+
+    private String getOrganization(ItemGroup group) {
+        try {
+            OrganizationFactory orgFactory = OrganizationFactory.getInstance();
+            BlueOrganization org = orgFactory.getContainingOrg(group);
+            if (org != null) {
+                return org.getName();
+            } else {
+                return getFirstOrg(orgFactory);
+            }
+        } catch (Exception e) { //There may be no OrganizationFactory which will return a RuntimeException
+            return DEFAULT_ORG;
+        }
+
+    }
+
+    private String getOrganization(Item item) {
+        try {
+            OrganizationFactory orgFactory = OrganizationFactory.getInstance();
+            BlueOrganization org = orgFactory.getContainingOrg(item);
+            if (org != null) {
+                return org.getName();
+            } else {
+                return getFirstOrg(orgFactory);
+            }
+        } catch (Exception e) { //There may be no OrganizationFactory which will return a RuntimeException
+            return DEFAULT_ORG;
+        }
+    }
+
+    private String getFirstOrg(OrganizationFactory orgFactory) {
+        Iterator<BlueOrganization> orgIterator = orgFactory.list().iterator();
+        if (orgIterator.hasNext()) {
+            return orgIterator.next().getName();
+        } else {
+            return DEFAULT_ORG;
+        }
     }
 }
